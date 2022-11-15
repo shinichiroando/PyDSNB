@@ -134,9 +134,12 @@ class SN_neutrino_spectrum(units_and_constants):
         elif self.config['NEUTRINO']['mh']=='Inverted':
             self.mh = MassHierarchy.INVERTED
         self.SNmodel = self.config['SUPERNOVA']['authors']
+        E = np.linspace(0.,100.,2001)*self.MeV
+        self.dNdE_func = interp1d(E,self.dNdE_calc(E),
+                                  bounds_error=False,fill_value=0.)
         
         
-    def dNdE(self, E):
+    def dNdE_calc(self, E):
         
         if self.SNmodel=='FermiDirac':
             Etot = float(self.config['SUPERNOVA']['Etot_erg'])*self.erg
@@ -203,11 +206,10 @@ class DSNB(cosmology, supernova_rate, SN_neutrino_spectrum):
     
     
     def DSNB_dFdE(self, E, IMFmodel='Salpeter'):
-        int_dNdE = interp1d(E,self.dNdE(E),bounds_error=False,fill_value=0.)
         z = np.linspace(0.,5.,1000)
         z_2D = z.reshape(-1,1)
         integrand = 1./self.Hubble(z_2D)*self.R_SN(z_2D,IMFmodel) \
-            *int_dNdE((1.+z_2D)*E)
+            *self.dNdE_func((1.+z_2D)*E)
         dFdE = simps(integrand,x=z,axis=0)
         return dFdE
     
