@@ -1,13 +1,13 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.integrate import simps
-from scipy.interpolate import interp1d
-from snewpy.models import ccsn
-from snewpy.neutrino import MassHierarchy, Flavor, MixingParameters
-from snewpy.flavor_transformation import AdiabaticMSW
-from astropy import units as u
 import configparser
 
+import matplotlib.pyplot as plt
+import numpy as np
+from astropy import units as u
+from scipy.integrate import simps
+from scipy.interpolate import interp1d
+from snewpy.flavor_transformation import AdiabaticMSW
+from snewpy.models import ccsn
+from snewpy.neutrino import Flavor, MassHierarchy, MixingParameters
 
 
 class units_and_constants:
