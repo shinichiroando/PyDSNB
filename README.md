@@ -17,4 +17,4 @@ Data directory 'SNEWPY_models' must also be downloaded from the same repository 
 
 ## How to use PyDSNB
 
-The file 'PyDSNB.py' constains all the essential functions taht are used to compute various quantities relevant to DSNB, such as star-formation rate and supernova neutrino spectrum. Please also read 'PyDSNB.ipynb' The main class 'DSNB' takes an initialization file. We include 'params.ini' as an example. The content of this file should be self-explanatory.
+The file 'PyDSNB.py' constains all the essential functions that are used to compute various quantities relevant to DSNB, such as star-formation rate and supernova neutrino spectrum. Please also read 'PyDSNB.ipynb' The main class 'DSNB' takes an initialization file. We include 'params.ini' as an example. The content of this file should be self-explanatory.
