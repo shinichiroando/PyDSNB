@@ -66,8 +66,20 @@ class cosmology(units_and_constants):
 class supernova_rate(units_and_constants):
     
     
-    def __init__(self):
+    def __init__(self, inifile):
         units_and_constants.__init__(self)
+        self.config = configparser.ConfigParser()
+        self.config.read(inifile)
+        model = self.config['IMF']['model']
+        if model=='Salpeter':
+            self.xi1 = 2.35
+            self.xi2 = 2.35
+        elif model=='Kroupa':
+            self.xi1 = 1.3
+            self.xi2 = 2.3
+        elif model=='BG':
+            self.xi1 = 1.5
+            self.xi2 = 2.15
         
         
     def R_SF(self, z):
@@ -89,30 +101,20 @@ class supernova_rate(units_and_constants):
         return R_SF
 
     
-    def IMF(self, M, model='Salpeter'):
+    def IMF(self, M):
         """
         model: 'Salpeter' (default), 'Kroupa', or 'BG'
         """
-        if model=='Salpeter':
-            xi1 = 2.35
-            xi2 = 2.35
-        elif model=='Kroupa':
-            xi1 = 1.3
-            xi2 = 2.3
-        elif model=='BG':
-            xi1 = 1.5
-            xi2 = 2.15
-        
-        phi = np.where(M>0.5*self.Msun,(M/(0.5*self.Msun))**-xi2,
-                       (M/(0.5*self.Msun))**-xi1)
+        phi = np.where(M>0.5*self.Msun,(M/(0.5*self.Msun))**-self.xi2,
+                       (M/(0.5*self.Msun))**-self.xi1)
         return phi
     
     
-    def R_SN(self, z, IMFmodel='Salpeter'):
+    def R_SN(self, z):
         M1 = np.logspace(-1,2,1000)*self.Msun
         M2 = np.logspace(np.log10(8.),2,1000)*self.Msun
-        denominator = simps(M1**2*self.IMF(M1,IMFmodel),x=np.log(M1))
-        numerator   = simps(M2*self.IMF(M2,IMFmodel),x=np.log(M2))
+        denominator = simps(M1**2*self.IMF(M1),x=np.log(M1))
+        numerator   = simps(M2*self.IMF(M2),x=np.log(M2))
         conversion  = numerator/denominator
         R_SN = conversion*self.R_SF(z)
         return R_SN
@@ -120,13 +122,11 @@ class supernova_rate(units_and_constants):
         
 
         
-class SN_neutrino_spectrum(units_and_constants):
+class SN_neutrino_spectrum(supernova_rate):
     
     
     def __init__(self, inifile):
-        units_and_constants.__init__(self)
-        self.config = configparser.ConfigParser()
-        self.config.read(inifile)
+        supernova_rate.__init__(self, inifile)
         if self.config['NEUTRINO']['flavor']=='NU_E_BAR':
             self.flavor = Flavor.NU_E_BAR
         if self.config['NEUTRINO']['mh']=='Normal':
@@ -135,11 +135,15 @@ class SN_neutrino_spectrum(units_and_constants):
             self.mh = MassHierarchy.INVERTED
         self.SNmodel = self.config['SUPERNOVA']['authors']
         E = np.linspace(0.,100.,2001)*self.MeV
-        self.dNdE_func = interp1d(E,self.dNdE_calc(E),
+        if self.config['IMF']['weighed_dNdE']=='T':
+            dNdE_calc = self.dNdE_calc_IMFweighed
+        else:
+            dNdE_calc = self.dNdE_calc_IMFunweighed
+        self.dNdE_func = interp1d(E,dNdE_calc(E),
                                   bounds_error=False,fill_value=0.)
         
         
-    def dNdE_calc(self, E):
+    def dNdE_calc_IMFunweighed(self, E):
         
         if self.SNmodel=='FermiDirac':
             Etot = float(self.config['SUPERNOVA']['Etot_erg'])*self.erg
@@ -194,21 +198,53 @@ class SN_neutrino_spectrum(units_and_constants):
         return dNdE
     
     
+    def dNdE_calc_IMFweighed(self, E):
+        
+        xform = AdiabaticMSW(mh=self.mh)
+        N_E = len(E)
+        model_list = ['s11.2c','s27.0c']
+            
+        if self.SNmodel=='Bollig_2016':
+            dNdE = np.empty((N_E,2))
+            for modelname in model_list:
+                model_id = model_list.index(modelname)
+                model = ccsn.Bollig_2016('SNEWPY_models/Bollig_2016/'+modelname,'LS220')
+                t_list = model.time.value*self.s
+                N_t = len(t_list)
+                dNdtdE = np.empty((N_t,N_E))
+                for i in np.arange(N_t):
+                    t = t_list[i]
+                    dNdtdE[i] = model.get_transformed_spectra((t/self.s)*u.s,
+                                                                (E/self.MeV)*u.MeV,
+                                                                xform)[self.flavor].value \
+                        *self.erg**-1*self.s**-1
+                dNdE[:,model_id] = simps(dNdtdE,x=t_list,axis=0)
+            Ml = np.array([8.,22.])*self.Msun
+            Mu = np.array([22.,125.])*self.Msun
+
+        M  = np.logspace(np.log10(Ml/self.Msun),np.log10(Mu/self.Msun),1001)*self.Msun
+        Mtot = np.logspace(np.log10(8.),np.log10(125.),1001)*self.Msun
+        M = np.expand_dims(M,axis=1)
+        denominator = simps(self.IMF(Mtot)*Mtot,x=np.log(Mtot))
+        numerator = np.sum(simps(self.IMF(M)*M*dNdE,x=np.log(M),axis=0),axis=-1)
+        dNdE_weighed = numerator/denominator
+
+        return dNdE_weighed
+   
     
-    
-class DSNB(cosmology, supernova_rate, SN_neutrino_spectrum):
+
+class DSNB(cosmology, SN_neutrino_spectrum):
     
     
     def __init__(self, inifile):
         cosmology.__init__(self)
-        supernova_rate.__init__(self)
         SN_neutrino_spectrum.__init__(self,inifile)
     
     
-    def DSNB_dFdE(self, E, IMFmodel='Salpeter'):
+    def DSNB_dFdE(self, E):
         z = np.linspace(0.,5.,1000)
         z_2D = z.reshape(-1,1)
-        integrand = 1./self.Hubble(z_2D)*self.R_SN(z_2D,IMFmodel) \
+        integrand = 1./self.Hubble(z_2D)*self.R_SN(z_2D) \
             *self.dNdE_func((1.+z_2D)*E)
         dFdE = simps(integrand,x=z,axis=0)
         return dFdE
