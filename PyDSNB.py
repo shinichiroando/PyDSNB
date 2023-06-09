@@ -110,6 +110,14 @@ class supernova_rate(units_and_constants):
         C   = (1.+z1)**((b-a)/c)*(1.+z2)**(1.-b/c)
         R_SF = R0*((1.+z)**(a*eta)+((1.+z)/B)**(b*eta) \
                    +((1.+z)/C)**(c*eta))**(1./eta)
+        # Conversion factor - this fit assumes Salpeter IMF (from Horiuchi et al. arXiv:0812.3157)
+        if self.config['IMF']['model'] == 'Salpeter':
+            R_SF = R_SF * 1
+        elif self.config['IMF']['model'] == 'Kroupa':
+            R_SF = R_SF * 0.66
+        elif self.config['IMF']['model'] == 'BG':
+            R_SF = R_SF * 0.55
+        
         return R_SF
 
     
